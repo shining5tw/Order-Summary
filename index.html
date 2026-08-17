@@ -516,15 +516,15 @@
                         <i class="fas fa-file-import mr-2 text-amber-500"></i>匯入歷史銷售明細 Excel（客戶商品勾稽）
                     </h2>
                     <p class="text-xs text-slate-500 mb-4">
-                        請選擇您的銷貨明細 Excel 檔案（如：<strong>115.5月零售銷售明細表.xlsx</strong>）。系統會自動學習檔案中的「客戶簡稱」、「品名」、「計價單位」與「單價」，未來新增訂單點選該客戶時將自動自動帶入商品資訊。
+                        請選擇您的銷貨明細 Excel 檔案（如：<strong>115.5月零售銷售明細表.xlsx</strong>）。系統會自動學習檔案中的「客戶簡稱」、「品名」、「計價單位」與「單價」，支援一次多選或多次上傳，資料會自動累積不覆蓋。
                     </p>
 
                     <div class="border-2 border-dashed border-slate-300 rounded-2xl p-6 text-center hover:border-amber-400 transition-all bg-slate-50">
-                        <input type="file" id="excelFileInput" accept=".xlsx, .xls" @change="handleExcelUpload" class="hidden">
+                        <input type="file" id="excelFileInput" accept=".xlsx, .xls" multiple @change="handleExcelUpload" class="hidden">
                         <label for="excelFileInput" class="cursor-pointer flex flex-col items-center justify-center space-y-2">
                             <i class="fas fa-cloud-arrow-up text-3xl text-amber-500"></i>
-                            <span class="text-sm font-bold text-slate-700">點擊上傳 Excel 銷售明細檔案</span>
-                            <span class="text-xs text-slate-400">支援 .xlsx / .xls 格式</span>
+                            <span class="text-sm font-bold text-slate-700">點擊上傳 Excel 銷售明細檔案（可多選）</span>
+                            <span class="text-xs text-slate-400">支援 .xlsx / .xls 格式，可一次選擇多個檔案匯入</span>
                         </label>
                     </div>
 
@@ -662,57 +662,62 @@
 
                 // --- Excel File Import ---
                 const handleExcelUpload = (event) => {
-                    const file = event.target.files[0];
-                    if (!file) return;
+                    const files = Array.from(event.target.files || []);
+                    if (files.length === 0) return;
 
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        try {
-                            const data = new Uint8Array(e.target.result);
-                            const workbook = XLSX.read(data, { type: 'array' });
-                            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                            const json = XLSX.utils.sheet_to_json(firstSheet);
+                    let totalNewItems = 0;
+                    const historyMap = { ...customerHistory.value };
+                    let filesProcessed = 0;
 
-                            let count = 0;
-                            const historyMap = { ...customerHistory.value };
+                    files.forEach(file => {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            try {
+                                const data = new Uint8Array(e.target.result);
+                                const workbook = XLSX.read(data, { type: 'array' });
+                                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                                const json = XLSX.utils.sheet_to_json(firstSheet);
 
-                            json.forEach(row => {
-                                const custName = String(row['客戶簡稱'] || row['客戶名稱'] || row['客戶'] || '').trim();
-                                const prodName = String(row['品名'] || row['商品名稱'] || row['產品名稱'] || row['商品'] || '').trim();
-                                const unit = String(row['計價單位'] || row['單位'] || '箱').trim();
-                                const price = Number(row['單價'] || row['報價'] || row['售價'] || 0);
+                                json.forEach(row => {
+                                    const custName = String(row['客戶簡稱'] || row['客戶名稱'] || row['客戶'] || '').trim();
+                                    const prodName = String(row['品名'] || row['商品名稱'] || row['產品名稱'] || row['商品'] || '').trim();
+                                    const unit = String(row['計價單位'] || row['單位'] || '箱').trim();
+                                    const price = Number(row['單價'] || row['報價'] || row['售價'] || 0);
 
-                                if (custName && prodName) {
-                                    if (!historyMap[custName]) {
-                                        historyMap[custName] = [];
+                                    if (custName && prodName) {
+                                        if (!historyMap[custName]) {
+                                            historyMap[custName] = [];
+                                        }
+                                        const exists = historyMap[custName].find(p => p.productName === prodName);
+                                        if (!exists) {
+                                            historyMap[custName].push({
+                                                productName: prodName,
+                                                unit: unit || '箱',
+                                                price: price || 0
+                                            });
+                                            totalNewItems++;
+                                        }
                                     }
-                                    const exists = historyMap[custName].find(p => p.productName === prodName);
-                                    if (!exists) {
-                                        historyMap[custName].push({
-                                            productName: prodName,
-                                            unit: unit || '箱',
-                                            price: price || 0
-                                        });
-                                        count++;
+                                });
+                            } catch (err) {
+                                console.error(err);
+                                showToast(`檔案 ${file.name} 解析失敗`, 'error');
+                            } finally {
+                                filesProcessed++;
+                                if (filesProcessed === files.length) {
+                                    if (totalNewItems > 0) {
+                                        customerHistory.value = historyMap;
+                                        saveCustomerHistory();
+                                        showToast(`成功匯入！共新增 ${totalNewItems} 筆不重複客戶商品紀錄`);
+                                    } else {
+                                        showToast('讀取完成，資料庫已包含匯入檔案中的所有客戶品項');
                                     }
+                                    event.target.value = '';
                                 }
-                            });
-
-                            if (count > 0) {
-                                customerHistory.value = historyMap;
-                                saveCustomerHistory();
-                                showToast(`成功匯入 ${count} 筆客戶歷史產品資料！`);
-                            } else {
-                                showToast('請確認 Excel 包含「客戶簡稱」、「品名」與「計價單位」欄位', 'error');
                             }
-                        } catch (err) {
-                            console.error(err);
-                            showToast('Excel 解析失敗，請確認檔案格式', 'error');
-                        } finally {
-                            event.target.value = '';
-                        }
-                    };
-                    reader.readAsArrayBuffer(file);
+                        };
+                        reader.readAsArrayBuffer(file);
+                    });
                 };
 
                 // --- Order Form Logic ---
