@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>茂生食品零售/行口訂單彙整表</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SheetJS Excel Library -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Vue 3 CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        [v-cloak] { display: none !important; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+    <div id="app" v-cloak class="min-h-screen flex flex-col">
+        
+        <!-- Toast Notification -->
+        <div v-if="toast.show" 
+             :class="toast.type === 'error' ? 'bg-red-600' : 'bg-emerald-600'" 
+             class="fixed top-4 right-4 z-50 text-white px-5 py-3 rounded-xl shadow-xl flex items-center space-x-3 transition-all transform duration-300">
+            <i :class="toast.type === 'error' ? 'fas fa-exclamation-circle' : 'fas fa-check-circle'" class="text-xl"></i>
+            <span class="font-medium text-sm md:text-base">{{ toast.message }}</span>
+        </div>
+
+        <!-- 歷史資料上傳提醒對話框 (Modal Dialog) -->
+        <div v-if="showCustomerNoticeModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-100 text-center space-y-4 animate-fade-in">
+                <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto text-xl">
+                    <i class="fas fa-circle-info"></i>
+                </div>
+                <h3 class="text-lg font-bold text-slate-800">提醒</h3>
+                <p class="text-sm text-slate-600 leading-relaxed">請到「基礎設定」頁面上傳歷史訂購資料</p>
+                <div class="pt-2 flex justify-center space-x-3">
+                    <button type="button" @click="showCustomerNoticeModal = false" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-sm font-semibold transition-all">
+                        我知道了
+                    </button>
+                    <button type="button" @click="showCustomerNoticeModal = false; activeTab = 'settings'" class="bg-amber-500 hover:bg-amber-600 text-slate-950 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-md">
+                        前往基礎設定
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Header -->
+        <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-40">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap justify-between items-center gap-3">
+                <div class="flex items-center space-x-3">
+                    <div class="bg-amber-500 p-2.5 rounded-xl text-slate-900 font-bold shadow-md">
+                        <i class="fas fa-egg text-xl"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center space-x-2">
+                            <h1 class="text-lg sm:text-xl font-bold tracking-wide">茂生食品零售/行口訂單彙整表</h1>
+                            <span class="bg-amber-400 text-slate-950 text-xs font-black px-2 py-0.5 rounded-full uppercase shadow-sm">v1.1.0</span>
+                        </div>
+                        <p class="text-xs text-slate-400 flex items-center mt-0.5">
+                            <i class="fas fa-user-shield text-amber-400 mr-1.5"></i>維護者：吳尚穎
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Navigation Tabs -->
+                <nav class="flex space-x-1 sm:space-x-2 bg-slate-800 p-1 rounded-xl">
+                    <button @click="activeTab = 'newOrder'" 
+                            :class="activeTab === 'newOrder' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'text-slate-300 hover:text-white'"
+                            class="px-3 sm:px-4 py-1.5 text-xs sm:text-sm rounded-lg transition-all flex items-center space-x-1.5">
+                        <i class="fas fa-pen-to-square"></i>
+                        <span>新增訂單</span>
+                    </button>
+                    <button @click="activeTab = 'orderList'" 
+                            :class="activeTab === 'orderList' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'text-slate-300 hover:text-white'"
+                            class="px-3 sm:px-4 py-1.5 text-xs sm:text-sm rounded-lg transition-all flex items-center space-x-1.5">
+                        <i class="fas fa-list-check"></i>
+                        <span>訂單清單</span>
+                        <span class="bg-slate-900 text-amber-400 text-xs px-1.5 py-0.2 rounded-full font-bold ml-1" v-if="orders.length">{{ orders.length }}</span>
+                    </button>
+                    <button @click="activeTab = 'settings'" 
+                            :class="activeTab === 'settings' ? 'bg-amber-500 text-slate-950 font-bold shadow' : 'text-slate-300 hover:text-white'"
+                            class="px-3 sm:px-4 py-1.5 text-xs sm:text-sm rounded-lg transition-all flex items-center space-x-1.5">
+                        <i class="fas fa-sliders"></i>
+                        <span>基礎設定</span>
+                    </button>
+                </nav>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="flex-grow max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-6">
+            
+            <!-- Tab 1: 新增訂單 -->
+            <div v-show="activeTab === 'newOrder'" class="space-y-6">
+                
+                <!-- 編輯狀態提示 Banner -->
+                <div v-if="editingOrderId" class="bg-amber-100 border-2 border-amber-400 rounded-2xl p-4 flex justify-between items-center text-amber-950 font-bold shadow-md">
+                    <div class="flex items-center space-x-2">
+                        <i class="fas fa-pen-to-square text-amber-600 text-xl"></i>
+                        <span>目前正在編輯訂單：<strong class="font-mono text-base">{{ editingOrderId }}</strong></span>
+                    </div>
+                    <button type="button" @click="cancelEdit" class="bg-white hover:bg-slate-100 text-slate-700 text-xs px-3 py-1.5 rounded-lg border border-slate-300 transition-all">
+                        <i class="fas fa-xmark mr-1"></i>取消編輯
+                    </button>
+                </div>
+
+                <!-- 基本資訊卡片 -->
+                <div class="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-200">
+                    <h2 class="text-base font-bold text-slate-900 border-l-4 border-amber-500 pl-3 mb-4 flex items-center justify-between">
+                        <span><i class="fas fa-id-card mr-2 text-amber-500"></i>訂單基本資料</span>
+                        <span class="text-xs text-slate-400 font-normal">* 為必填項目</span>
+                    </h2>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <!-- 下單人員 -->
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">下單人員 *</label>
+                            <div class="relative">
+                                <select v-model="form.salesperson" class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-amber-500 focus:outline-none appearance-none">
+                                    <option value="" disabled>請選擇人員</option>
+                                    <option v-for="person in salespersons" :key="person" :value="person">{{ person }}</option>
+                                </select>
+                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                                    <i class="fas fa-chevron-down text-xs"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 下單日期 -->
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">下單日期 *</label>
+                            <input type="date" v-model="form.orderDate" class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                        </div>
+
+                        <!-- 到貨日期 -->
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">到貨日期 *</label>
+                            <input type="date" v-model="form.deliveryDate" class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                        </div>
+
+                        <!-- 客戶類型 -->
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">客戶類型 *</label>
+                            <div class="flex items-center space-x-3 pt-1">
+                                <label class="flex items-center cursor-pointer bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl w-1/2 hover:bg-amber-50">
+                                    <input type="radio" v-model="form.customerType" value="行口" class="text-amber-500 focus:ring-amber-500" @change="recalculateEggPrices">
+                                    <span class="ml-2 text-sm font-semibold text-slate-800">行口</span>
+                                </label>
+                                <label class="flex items-center cursor-pointer bg-slate-50 border border-slate-200 px-4 py-2 rounded-xl w-1/2 hover:bg-amber-50">
+                                    <input type="radio" v-model="form.customerType" value="零售" class="text-amber-500 focus:ring-amber-500" @change="recalculateEggPrices">
+                                    <span class="ml-2 text-sm font-semibold text-slate-800">零售</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- 客戶名稱 (支援動態更新、快速清空與歷史紀錄自動帶入) -->
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">
+                                客戶名稱 *
+                                <span v-if="hasCustomerHistory" class="text-emerald-600 font-normal ml-1">
+                                    <i class="fas fa-circle-check"></i> 具歷史購買紀錄
+                                </span>
+                            </label>
+                            <div class="relative flex items-center">
+                                <input type="text" 
+                                       v-model="form.customerName" 
+                                       list="customerList" 
+                                       @input="onCustomerInput"
+                                       @focus="onCustomerFocus"
+                                       placeholder="請輸入或選擇客戶名稱" 
+                                       class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-xl pl-3 pr-8 py-2 focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                                <button v-if="form.customerName" 
+                                        type="button" 
+                                        @click="clearCustomerName" 
+                                        class="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1"
+                                        title="清空客戶名稱">
+                                    <i class="fas fa-circle-xmark text-sm"></i>
+                                </button>
+                                <datalist id="customerList">
+                                    <option v-for="(items, name) in customerHistory" :key="name" :value="name"></option>
+                                </datalist>
+                            </div>
+                        </div>
+
+                        <!-- 產地價 -->
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">
+                                產地價 (元/斤)
+                                <span v-if="form.customerType === '行口'" class="text-amber-600 text-xs font-normal">（可自動推算行口白蛋/紅蛋單價）</span>
+                            </label>
+                            <div class="relative">
+                                <input type="number" step="0.5" v-model.number="form.farmPrice" @input="recalculateEggPrices" placeholder="例如: 40" class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-xl px-3 py-2 pl-7 focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                                <span class="absolute left-3 top-2.5 text-slate-400 text-xs">＄</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 客戶歷史紀錄提醒與快速帶入 -->
+                    <div v-if="form.customerName && customerHistory[form.customerName]" class="mt-4 bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center space-x-2 text-emerald-800 text-xs sm:text-sm">
+                            <i class="fas fa-history text-emerald-600 text-base"></i>
+                            <span>找到客戶 <strong>{{ form.customerName }}</strong> 的歷史品項紀錄 ({{ customerHistory[form.customerName].length }} 個品項)</span>
+                        </div>
+                        <button type="button" @click="applyCustomerHistory" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1.5 rounded-lg shadow-sm transition-all flex items-center space-x-1">
+                            <i class="fas fa-file-import"></i>
+                            <span>帶入歷史購買商品</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 訂單品項卡片 -->
+                <div class="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-200">
+                    <div class="flex flex-wrap justify-between items-center mb-4 gap-2">
+                        <h2 class="text-base font-bold text-slate-900 border-l-4 border-amber-500 pl-3">
+                            <i class="fas fa-boxes-stacked mr-2 text-amber-500"></i>訂單品項與價格
+                        </h2>
+                        
+                        <!-- 行口蛋價換算公式說明提示 -->
+                        <div v-if="form.customerType === '行口'" class="text-xs bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1.5 rounded-lg flex items-center space-x-2">
+                            <i class="fas fa-calculator text-amber-600"></i>
+                            <span>行口公式 (1箱=20斤): 白蛋=產地價 | 紅蛋=+3 | 機白=+1.5 | 機紅=+6</span>
+                        </div>
+                    </div>
+
+                    <!-- 品項明細列表 (桌面與平版) -->
+                    <div class="hidden sm:block overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-sm">
+                            <thead>
+                                <tr class="bg-slate-100 text-slate-600 border-b border-slate-200">
+                                    <th class="py-2.5 px-3 font-semibold rounded-l-lg">項次</th>
+                                    <th class="py-2.5 px-3 font-semibold w-2/5">品名 *</th>
+                                    <th class="py-2.5 px-3 font-semibold w-1/6">數量 *</th>
+                                    <th class="py-2.5 px-3 font-semibold w-1/6">單位 *</th>
+                                    <th class="py-2.5 px-3 font-semibold w-1/5">報價單價 (元) *</th>
+                                    <th class="py-2.5 px-3 font-semibold text-right">小計</th>
+                                    <th class="py-2.5 px-3 font-semibold text-center rounded-r-lg">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr v-for="(item, index) in form.items" :key="index" class="hover:bg-slate-50 transition-colors">
+                                    <td class="py-3 px-3 text-slate-400 font-mono text-xs">{{ index + 1 }}</td>
+                                    <td class="py-3 px-3">
+                                        <input type="text" 
+                                               v-model="item.productName" 
+                                               @input="onItemNameChange(item)"
+                                               placeholder="請輸入或選取品名" 
+                                               list="productList"
+                                               class="w-full bg-slate-50 border border-slate-300 text-slate-800 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                                    </td>
+                                    <td class="py-3 px-3">
+                                        <input type="number" min="1" v-model.number="item.quantity" class="w-full bg-slate-50 border border-slate-300 text-slate-800 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                                    </td>
+                                    <td class="py-3 px-3">
+                                        <select v-model="item.unit" @change="onItemUnitChange(item)" class="w-full bg-slate-50 border border-slate-300 text-slate-800 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                                            <option value="箱">箱 (20斤)</option>
+                                            <option value="斤">斤</option>
+                                            <option value="盒">盒</option>
+                                            <option value="包">包</option>
+                                            <option value="板">板</option>
+                                            <option value="公斤">公斤</option>
+                                        </select>
+                                    </td>
+                                    <td class="py-3 px-3">
+                                        <input type="number" step="0.5" v-model.number="item.price" class="w-full bg-slate-50 border border-slate-300 text-slate-800 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-amber-500 focus:outline-none font-medium">
+                                    </td>
+                                    <td class="py-3 px-3 text-right font-bold text-slate-900 font-mono">
+                                        ${{ ((item.quantity || 0) * (item.price || 0)).toLocaleString() }}
+                                    </td>
+                                    <td class="py-3 px-3 text-center">
+                                        <button type="button" @click="removeItem(index)" class="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors" title="刪除品項">
+                                            <i class="fas fa-trash-can"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 手機端自適應卡片列表 -->
+                    <div class="block sm:hidden space-y-3">
+                        <div v-for="(item, index) in form.items" :key="index" class="border border-slate-200 rounded-xl p-3 bg-slate-50/50 space-y-2">
+                            <div class="flex justify-between items-center border-b border-slate-200 pb-2">
+                                <span class="font-bold text-slate-700 text-xs">品項 #{{ index + 1 }}</span>
+                                <button type="button" @click="removeItem(index)" class="text-red-500 text-xs px-2 py-1">
+                                    <i class="fas fa-trash-can mr-1"></i>刪除
+                                </button>
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-500">品名</label>
+                                <input type="text" v-model="item.productName" @input="onItemNameChange(item)" list="productList" class="w-full bg-white border border-slate-300 text-sm rounded-lg px-2.5 py-1.5 mt-0.5">
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-xs text-slate-500">數量</label>
+                                    <input type="number" min="1" v-model.number="item.quantity" class="w-full bg-white border border-slate-300 text-sm rounded-lg px-2 py-1.5 mt-0.5">
+                                </div>
+                                <div>
+                                    <label class="text-xs text-slate-500">單位</label>
+                                    <select v-model="item.unit" @change="onItemUnitChange(item)" class="w-full bg-white border border-slate-300 text-sm rounded-lg px-2 py-1.5 mt-0.5">
+                                        <option value="箱">箱 (20斤)</option>
+                                        <option value="斤">斤</option>
+                                        <option value="盒">盒</option>
+                                        <option value="包">包</option>
+                                        <option value="板">板</option>
+                                        <option value="公斤">公斤</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 items-center pt-1">
+                                <div>
+                                    <label class="text-xs text-slate-500">單價 (元)</label>
+                                    <input type="number" step="0.5" v-model.number="item.price" class="w-full bg-white border border-slate-300 text-sm rounded-lg px-2 py-1.5 mt-0.5 font-bold">
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-xs text-slate-400">小計</div>
+                                    <div class="text-base font-bold text-slate-900 font-mono">${{ ((item.quantity || 0) * (item.price || 0)).toLocaleString() }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 快選品名選單 (Datalist) -->
+                    <datalist id="productList">
+                        <option value="散白蛋"></option>
+                        <option value="散紅蛋"></option>
+                        <option value="散機白蛋"></option>
+                        <option value="散機紅蛋"></option>
+                        <option value="洗選白蛋"></option>
+                        <option value="洗選紅蛋"></option>
+                    </datalist>
+
+                    <!-- 按鈕與統計列 -->
+                    <div class="mt-4 flex flex-wrap justify-between items-center gap-3 pt-3 border-t border-slate-100">
+                        <button type="button" @click="addItem" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-semibold px-4 py-2 rounded-xl transition-all flex items-center space-x-1.5">
+                            <i class="fas fa-plus text-amber-500"></i>
+                            <span>新增品項</span>
+                        </button>
+
+                        <div class="text-right">
+                            <span class="text-xs text-slate-500 mr-2">訂單總品項：<strong class="text-slate-800">{{ form.items.length }}</strong> 項</span>
+                            <span class="text-sm font-semibold text-slate-700">合計金額：</span>
+                            <span class="text-xl sm:text-2xl font-black text-amber-600 font-mono">${{ totalAmount.toLocaleString() }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 備註與送出按鈕卡片 -->
+                <div class="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-200 space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">備註說明</label>
+                        <textarea v-model="form.remarks" rows="2" placeholder="請輸入送貨注意事項、交貨地點或客戶特殊要求..." class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-xl p-3 focus:ring-2 focus:ring-amber-500 focus:outline-none"></textarea>
+                    </div>
+
+                    <div class="flex flex-wrap gap-3 justify-end pt-2">
+                        <button type="button" @click="resetForm" class="bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium px-5 py-2.5 rounded-xl text-sm transition-all">
+                            <i class="fas fa-arrow-rotate-left mr-1"></i>重置
+                        </button>
+                        <button type="button" @click="copyFormLineText" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 font-semibold px-5 py-2.5 rounded-xl text-sm transition-all flex items-center space-x-1.5">
+                            <i class="fab fa-line text-lg text-emerald-600"></i>
+                            <span>複製 LINE 格式</span>
+                        </button>
+                        <button type="button" @click="exportCurrentOrderToExcel" class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-300 font-semibold px-5 py-2.5 rounded-xl text-sm transition-all flex items-center space-x-1.5">
+                            <i class="fas fa-file-excel text-blue-600"></i>
+                            <span>匯出 Excel</span>
+                        </button>
+                        <button type="button" @click="saveOrder" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-6 py-2.5 rounded-xl text-sm shadow-md transition-all flex items-center space-x-2">
+                            <i :class="editingOrderId ? 'fas fa-pen-to-square' : 'fas fa-floppy-disk'"></i>
+                            <span>{{ editingOrderId ? '更新訂單內容' : '儲存並存入清單' }}</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 2: 訂單清單 -->
+            <div v-show="activeTab === 'orderList'" class="space-y-6">
+                
+                <!-- 統計數據面板 -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                        <div class="text-xs text-slate-500 font-medium">總訂單數</div>
+                        <div class="text-2xl font-black text-slate-800 mt-1">{{ orders.length }} <span class="text-xs font-normal text-slate-400">筆</span></div>
+                    </div>
+                    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                        <div class="text-xs text-slate-500 font-medium">行口訂單</div>
+                        <div class="text-2xl font-black text-amber-600 mt-1">{{ countByType('行口') }} <span class="text-xs font-normal text-slate-400">筆</span></div>
+                    </div>
+                    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                        <div class="text-xs text-slate-500 font-medium">零售訂單</div>
+                        <div class="text-2xl font-black text-blue-600 mt-1">{{ countByType('零售') }} <span class="text-xs font-normal text-slate-400">筆</span></div>
+                    </div>
+                    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                        <div class="text-xs text-slate-500 font-medium">總銷售金額</div>
+                        <div class="text-2xl font-black text-emerald-600 mt-1 font-mono">${{ filteredTotalAmount.toLocaleString() }}</div>
+                    </div>
+                </div>
+
+                <!-- 搜尋與篩選工具列 -->
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap gap-3 items-center justify-between">
+                    <div class="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+                        <!-- 關鍵字搜尋 -->
+                        <div class="relative flex-grow sm:flex-grow-0 sm:w-64">
+                            <input type="text" v-model="filter.search" placeholder="搜尋客戶或品名..." class="w-full bg-slate-50 border border-slate-300 text-sm rounded-xl pl-8 pr-3 py-2 focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                            <i class="fas fa-search absolute left-2.5 top-3 text-slate-400 text-xs"></i>
+                        </div>
+
+                        <!-- 篩選下單人員 -->
+                        <select v-model="filter.salesperson" class="bg-slate-50 border border-slate-300 text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                            <option value="">全部人員</option>
+                            <option v-for="person in salespersons" :key="person" :value="person">{{ person }}</option>
+                        </select>
+
+                        <!-- 篩選類型 -->
+                        <select v-model="filter.type" class="bg-slate-50 border border-slate-300 text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-amber-500 focus:outline-none">
+                            <option value="">全部類型</option>
+                            <option value="行口">行口</option>
+                            <option value="零售">零售</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center space-x-2">
+                        <button type="button" @click="exportBatchExcel" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs sm:text-sm px-4 py-2 rounded-xl transition-all flex items-center space-x-1.5 shadow-sm">
+                            <i class="fas fa-file-excel"></i>
+                            <span>整批匯出 Excel</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 訂單清單卡片 -->
+                <div v-if="filteredOrders.length === 0" class="bg-white rounded-2xl p-12 text-center border border-slate-200 text-slate-400">
+                    <i class="fas fa-folder-open text-4xl mb-3 text-slate-300"></i>
+                    <p class="text-sm font-medium">目前尚無符合條件的訂單資料</p>
+                </div>
+
+                <div v-else class="space-y-4">
+                    <div v-for="order in filteredOrders" :key="order.id" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-5 hover:border-amber-400 transition-all">
+                        <div class="flex flex-wrap justify-between items-start border-b border-slate-100 pb-3 gap-2">
+                            <div>
+                                <div class="flex items-center space-x-2">
+                                    <span :class="order.customerType === '行口' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'" class="text-xs font-bold px-2.5 py-0.5 rounded-full">
+                                        {{ order.customerType }}
+                                    </span>
+                                    <h3 class="text-base sm:text-lg font-bold text-slate-900">{{ order.customerName }}</h3>
+                                </div>
+                                <div class="text-xs text-slate-500 mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                                    <span><i class="fas fa-calendar-day mr-1 text-slate-400"></i>下單日期：{{ order.orderDate }}</span>
+                                    <span><i class="fas fa-truck-ramp-box mr-1 text-slate-400"></i>到貨日期：{{ order.deliveryDate }}</span>
+                                    <span><i class="fas fa-user mr-1 text-slate-400"></i>下單人員：{{ order.salesperson }}</span>
+                                    <span v-if="order.farmPrice"><i class="fas fa-tag mr-1 text-slate-400"></i>產地價：${{ order.farmPrice }}/斤</span>
+                                </div>
+                            </div>
+
+                            <!-- 訂單操作按鈕（新增編輯功能） -->
+                            <div class="flex items-center space-x-1">
+                                <button type="button" @click="editOrder(order)" class="text-amber-600 hover:bg-amber-50 p-2 rounded-lg text-sm" title="編輯修改訂單">
+                                    <i class="fas fa-pen-to-square text-lg"></i>
+                                </button>
+                                <button type="button" @click="copyOrderLineText(order)" class="text-emerald-600 hover:bg-emerald-50 p-2 rounded-lg text-sm" title="複製 LINE 文字">
+                                    <i class="fab fa-line text-lg"></i>
+                                </button>
+                                <button type="button" @click="exportSingleOrderExcel(order)" class="text-blue-600 hover:bg-blue-50 p-2 rounded-lg text-sm" title="匯出此單 Excel">
+                                    <i class="fas fa-file-excel text-lg"></i>
+                                </button>
+                                <button type="button" @click="deleteOrder(order.id)" class="text-red-500 hover:bg-red-50 p-2 rounded-lg text-sm" title="刪除訂單">
+                                    <i class="fas fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 訂單內品項表格 -->
+                        <div class="mt-3 overflow-x-auto">
+                            <table class="w-full text-left text-xs sm:text-sm">
+                                <thead>
+                                    <tr class="text-slate-400 border-b border-slate-100">
+                                        <th class="py-1.5 font-normal">品名</th>
+                                        <th class="py-1.5 font-normal">數量</th>
+                                        <th class="py-1.5 font-normal">單位</th>
+                                        <th class="py-1.5 font-normal">單價</th>
+                                        <th class="py-1.5 font-normal text-right">小計</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-50">
+                                    <tr v-for="(item, idx) in order.items" :key="idx" class="text-slate-700">
+                                        <td class="py-2 font-medium">{{ item.productName }}</td>
+                                        <td class="py-2">{{ item.quantity }}</td>
+                                        <td class="py-2">{{ item.unit }}</td>
+                                        <td class="py-2">${{ item.price }}</td>
+                                        <td class="py-2 text-right font-mono font-bold">${{ (item.quantity * item.price).toLocaleString() }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div v-if="order.remarks" class="mt-2 text-xs bg-slate-50 p-2 rounded-lg text-slate-600">
+                            <strong>備註：</strong> {{ order.remarks }}
+                        </div>
+
+                        <div class="mt-3 pt-2 border-t border-slate-100 flex justify-between items-center text-xs sm:text-sm">
+                            <span class="text-slate-400">編號：{{ order.id }}</span>
+                            <div class="font-bold text-slate-900">
+                                合計金額：<span class="text-base text-amber-600 font-mono">${{ calculateOrderTotal(order).toLocaleString() }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 3: 基礎設定 -->
+            <div v-show="activeTab === 'settings'" class="space-y-6">
+                
+                <!-- 115.5月零售銷售明細表 Excel 上傳設定 -->
+                <div class="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-200">
+                    <h2 class="text-base font-bold text-slate-900 border-l-4 border-amber-500 pl-3 mb-2">
+                        <i class="fas fa-file-import mr-2 text-amber-500"></i>匯入歷史銷售明細 Excel（客戶商品勾稽）
+                    </h2>
+                    <p class="text-xs text-slate-500 mb-4">
+                        請選擇您的銷貨明細 Excel 檔案（如：<strong>115.5月零售銷售明細表.xlsx</strong>）。系統會自動學習檔案中的「客戶簡稱」、「品名」、「計價單位」與「單價」，未來新增訂單點選該客戶時將自動自動帶入商品資訊。
+                    </p>
+
+                    <div class="border-2 border-dashed border-slate-300 rounded-2xl p-6 text-center hover:border-amber-400 transition-all bg-slate-50">
+                        <input type="file" id="excelFileInput" accept=".xlsx, .xls" @change="handleExcelUpload" class="hidden">
+                        <label for="excelFileInput" class="cursor-pointer flex flex-col items-center justify-center space-y-2">
+                            <i class="fas fa-cloud-arrow-up text-3xl text-amber-500"></i>
+                            <span class="text-sm font-bold text-slate-700">點擊上傳 Excel 銷售明細檔案</span>
+                            <span class="text-xs text-slate-400">支援 .xlsx / .xls 格式</span>
+                        </label>
+                    </div>
+
+                    <!-- 已載入客戶統計庫 -->
+                    <div class="mt-4 flex flex-wrap justify-between items-center bg-slate-100 p-3 rounded-xl text-xs sm:text-sm">
+                        <span class="text-slate-700">
+                            <i class="fas fa-database text-amber-500 mr-1.5"></i>目前已建立習慣資料庫：<strong class="text-amber-600 font-bold">{{ Object.keys(customerHistory).length }}</strong> 位客戶
+                        </span>
+                        <button v-if="Object.keys(customerHistory).length > 0" type="button" @click="clearCustomerHistory" class="text-red-500 hover:text-red-700 font-medium">
+                            <i class="fas fa-trash-can mr-1"></i>清空歷史資料
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 下單人員管理 -->
+                <div class="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-200">
+                    <h2 class="text-base font-bold text-slate-900 border-l-4 border-amber-500 pl-3 mb-4">
+                        <i class="fas fa-users-gear mr-2 text-amber-500"></i>下單人員選單管理
+                    </h2>
+
+                    <div class="flex gap-2 mb-4">
+                        <input type="text" v-model="newSalespersonName" placeholder="輸入新增人員姓名..." class="bg-slate-50 border border-slate-300 text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-amber-500 focus:outline-none flex-grow">
+                        <button type="button" @click="addSalesperson" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm px-4 py-2 rounded-xl transition-all">
+                            <i class="fas fa-plus mr-1"></i>新增
+                        </button>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2">
+                        <div v-for="person in salespersons" :key="person" class="bg-slate-100 border border-slate-200 rounded-xl px-3 py-1.5 text-xs sm:text-sm flex items-center space-x-2">
+                            <span class="font-medium text-slate-800">{{ person }}</span>
+                            <button type="button" @click="removeSalesperson(person)" class="text-slate-400 hover:text-red-500 transition-colors">
+                                <i class="fas fa-xmark"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="bg-slate-900 text-slate-500 text-xs text-center py-4 border-t border-slate-800">
+            茂生食品 零售/行口訂單彙整系統 &copy; 2026 | 維護者：吳尚穎
+        </footer>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, watch, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                // --- Tab State ---
+                const activeTab = ref('newOrder');
+                const editingOrderId = ref(null);
+                const showCustomerNoticeModal = ref(false);
+                const hasNotifiedHistory = ref(false);
+
+                // --- Toast Notification ---
+                const toast = ref({ show: false, message: '', type: 'success' });
+                const showToast = (msg, type = 'success') => {
+                    toast.value = { show: true, message: msg, type };
+                    setTimeout(() => { toast.value.show = false; }, 3000);
+                };
+
+                // --- Helper Functions ---
+                const getTodayString = () => {
+                    const today = new Date();
+                    const yyyy = today.getFullYear();
+                    const mm = String(today.getMonth() + 1).padStart(2, '0');
+                    const dd = String(today.getDate()).padStart(2, '0');
+                    return `${yyyy}-${mm}-${dd}`;
+                };
+
+                // 產生 3 位數流水號 (例如 001, 002)
+                const formatSequence = (num) => {
+                    return String(num || 1).padStart(3, '0');
+                };
+
+                // --- Salesperson Management ---
+                const defaultStaff = ['李豐竹', '李昇峰', '紀柏承', '林秉禾', '陳畇霏', '邱筑筠', '劉韋彤', '李昭慶'];
+                const salespersons = ref([]);
+                const newSalespersonName = ref('');
+
+                const loadSalespersons = () => {
+                    const saved = localStorage.getItem('maosheng_staff');
+                    if (saved) {
+                        try { salespersons.value = JSON.parse(saved); } catch (e) { salespersons.value = defaultStaff; }
+                    } else {
+                        salespersons.value = defaultStaff;
+                    }
+                };
+
+                const addSalesperson = () => {
+                    const name = newSalespersonName.value.trim();
+                    if (!name) return;
+                    if (salespersons.value.includes(name)) {
+                        showToast('該人員姓名已存在', 'error');
+                        return;
+                    }
+                    salespersons.value.push(name);
+                    localStorage.setItem('maosheng_staff', JSON.stringify(salespersons.value));
+                    newSalespersonName.value = '';
+                    showToast(`已新增人員：${name}`);
+                };
+
+                const removeSalesperson = (person) => {
+                    if (salespersons.value.length <= 1) {
+                        showToast('至少需保留一位人員', 'error');
+                        return;
+                    }
+                    salespersons.value = salespersons.value.filter(p => p !== person);
+                    localStorage.setItem('maosheng_staff', JSON.stringify(salespersons.value));
+                    showToast(`已刪除人員：${person}`);
+                };
+
+                // --- Customer Buying History Database ---
+                const customerHistory = ref({});
+
+                const loadCustomerHistory = () => {
+                    const saved = localStorage.getItem('maosheng_customer_history');
+                    if (saved) {
+                        try { customerHistory.value = JSON.parse(saved); } catch (e) { customerHistory.value = {}; }
+                    }
+                };
+
+                const saveCustomerHistory = () => {
+                    localStorage.setItem('maosheng_customer_history', JSON.stringify(customerHistory.value));
+                };
+
+                const clearCustomerHistory = () => {
+                    customerHistory.value = {};
+                    localStorage.removeItem('maosheng_customer_history');
+                    showToast('已清空客戶歷史銷售資料');
+                };
+
+                // --- Excel File Import ---
+                const handleExcelUpload = (event) => {
+                    const file = event.target.files[0];
+                    if (!file) return;
+
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const data = new Uint8Array(e.target.result);
+                            const workbook = XLSX.read(data, { type: 'array' });
+                            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                            const json = XLSX.utils.sheet_to_json(firstSheet);
+
+                            let count = 0;
+                            const historyMap = { ...customerHistory.value };
+
+                            json.forEach(row => {
+                                const custName = String(row['客戶簡稱'] || row['客戶名稱'] || row['客戶'] || '').trim();
+                                const prodName = String(row['品名'] || row['商品名稱'] || row['產品名稱'] || row['商品'] || '').trim();
+                                const unit = String(row['計價單位'] || row['單位'] || '箱').trim();
+                                const price = Number(row['單價'] || row['報價'] || row['售價'] || 0);
+
+                                if (custName && prodName) {
+                                    if (!historyMap[custName]) {
+                                        historyMap[custName] = [];
+                                    }
+                                    const exists = historyMap[custName].find(p => p.productName === prodName);
+                                    if (!exists) {
+                                        historyMap[custName].push({
+                                            productName: prodName,
+                                            unit: unit || '箱',
+                                            price: price || 0
+                                        });
+                                        count++;
+                                    }
+                                }
+                            });
+
+                            if (count > 0) {
+                                customerHistory.value = historyMap;
+                                saveCustomerHistory();
+                                showToast(`成功匯入 ${count} 筆客戶歷史產品資料！`);
+                            } else {
+                                showToast('請確認 Excel 包含「客戶簡稱」、「品名」與「計價單位」欄位', 'error');
+                            }
+                        } catch (err) {
+                            console.error(err);
+                            showToast('Excel 解析失敗，請確認檔案格式', 'error');
+                        } finally {
+                            event.target.value = '';
+                        }
+                    };
+                    reader.readAsArrayBuffer(file);
+                };
+
+                // --- Order Form Logic ---
+                const form = ref({
+                    salesperson: '',
+                    orderDate: getTodayString(),
+                    deliveryDate: getTodayString(),
+                    customerType: '行口',
+                    customerName: '',
+                    farmPrice: null,
+                    remarks: '',
+                    items: [
+                        { productName: '散白蛋', quantity: 1, unit: '箱', price: 0 }
+                    ]
+                });
+
+                const totalAmount = computed(() => {
+                    return form.value.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.price || 0)), 0);
+                });
+
+                const hasCustomerHistory = computed(() => {
+                    return !!(form.value.customerName && customerHistory.value[form.value.customerName]);
+                });
+
+                const clearCustomerName = () => {
+                    form.value.customerName = '';
+                };
+
+                // 行口產地價自動計算單價 (1箱 = 20斤)
+                const getEggUnitPrice = (productName, farmPrice, unit, customerType) => {
+                    if (customerType !== '行口' || !farmPrice || isNaN(farmPrice)) return null;
+
+                    let perJinPrice = null;
+                    if (productName.includes('散白蛋') || productName === '白蛋') {
+                        perJinPrice = farmPrice;
+                    } else if (productName.includes('散紅蛋') || productName === '紅蛋') {
+                        perJinPrice = farmPrice + 3;
+                    } else if (productName.includes('散機白蛋') || productName === '機白蛋') {
+                        perJinPrice = farmPrice + 1.5;
+                    } else if (productName.includes('散機紅蛋') || productName === '機紅蛋') {
+                        perJinPrice = farmPrice + 6;
+                    }
+
+                    if (perJinPrice !== null) {
+                        return unit === '箱' ? perJinPrice * 20 : perJinPrice;
+                    }
+                    return null;
+                };
+
+                const recalculateEggPrices = () => {
+                    if (form.value.customerType !== '行口' || !form.value.farmPrice) return;
+                    form.value.items.forEach(item => {
+                        const calculated = getEggUnitPrice(item.productName, form.value.farmPrice, item.unit, form.value.customerType);
+                        if (calculated !== null) {
+                            item.price = calculated;
+                        }
+                    });
+                };
+
+                const onItemNameChange = (item) => {
+                    const calculated = getEggUnitPrice(item.productName, form.value.farmPrice, item.unit, form.value.customerType);
+                    if (calculated !== null) {
+                        item.price = calculated;
+                    }
+                };
+
+                const onItemUnitChange = (item) => {
+                    const calculated = getEggUnitPrice(item.productName, form.value.farmPrice, item.unit, form.value.customerType);
+                    if (calculated !== null) {
+                        item.price = calculated;
+                    }
+                };
+
+                const checkAndShowHistoryNotice = () => {
+                    if (Object.keys(customerHistory.value).length === 0 && !hasNotifiedHistory.value) {
+                        showCustomerNoticeModal.value = true;
+                        hasNotifiedHistory.value = true;
+                    }
+                };
+
+                const onCustomerInput = () => {
+                    checkAndShowHistoryNotice();
+                };
+
+                const onCustomerFocus = () => {
+                    checkAndShowHistoryNotice();
+                };
+
+                const applyCustomerHistory = () => {
+                    const history = customerHistory.value[form.value.customerName];
+                    if (!history || history.length === 0) return;
+
+                    form.value.items = history.map(h => {
+                        let calcPrice = h.price;
+                        if (form.value.customerType === '行口' && form.value.farmPrice) {
+                            const eggCalc = getEggUnitPrice(h.productName, form.value.farmPrice, h.unit, '行口');
+                            if (eggCalc !== null) calcPrice = eggCalc;
+                        }
+                        return {
+                            productName: h.productName,
+                            quantity: 1,
+                            unit: h.unit || '箱',
+                            price: calcPrice
+                        };
+                    });
+                    showToast(`已載入 ${form.value.customerName} 的歷史品項`);
+                };
+
+                const addItem = () => {
+                    form.value.items.push({ productName: '', quantity: 1, unit: '箱', price: 0 });
+                };
+
+                const removeItem = (index) => {
+                    if (form.value.items.length <= 1) {
+                        showToast('訂單至少需要一個品項', 'error');
+                        return;
+                    }
+                    form.value.items.splice(index, 1);
+                };
+
+                const resetForm = () => {
+                    editingOrderId.value = null;
+                    form.value = {
+                        salesperson: salespersons.value[0] || '',
+                        orderDate: getTodayString(),
+                        deliveryDate: getTodayString(),
+                        customerType: '行口',
+                        customerName: '',
+                        farmPrice: null,
+                        remarks: '',
+                        items: [{ productName: '散白蛋', quantity: 1, unit: '箱', price: 0 }]
+                    };
+                    showToast('表單已重置');
+                };
+
+                const cancelEdit = () => {
+                    resetForm();
+                    showToast('已取消編輯');
+                };
+
+                // --- Orders List Management ---
+                const orders = ref([]);
+
+                const loadOrders = () => {
+                    const saved = localStorage.getItem('maosheng_orders');
+                    if (saved) {
+                        try { orders.value = JSON.parse(saved); } catch (e) { orders.value = []; }
+                    }
+                };
+
+                const saveOrdersToStorage = () => {
+                    localStorage.setItem('maosheng_orders', JSON.stringify(orders.value));
+                };
+
+                const saveOrder = () => {
+                    if (!form.value.salesperson) {
+                        showToast('請選擇「下單人員」', 'error');
+                        return;
+                    }
+                    if (!form.value.customerName.trim()) {
+                        showToast('請輸入「客戶名稱」', 'error');
+                        return;
+                    }
+                    if (form.value.items.some(i => !i.productName.trim())) {
+                        showToast('請完成所有品項名稱輸入', 'error');
+                        return;
+                    }
+
+                    // 若為編輯狀態則更新舊訂單
+                    if (editingOrderId.value) {
+                        const targetIdx = orders.value.findIndex(o => o.id === editingOrderId.value);
+                        if (targetIdx !== -1) {
+                            orders.value[targetIdx] = {
+                                ...orders.value[targetIdx],
+                                ...JSON.parse(JSON.stringify(form.value)),
+                                updatedAt: new Date().toISOString()
+                            };
+                            saveOrdersToStorage();
+                            showToast('訂單更新成功！');
+                            editingOrderId.value = null;
+                            resetForm();
+                            activeTab.value = 'orderList';
+                            return;
+                        }
+                    }
+
+                    // 新增訂單
+                    const newOrder = {
+                        id: 'ORD' + Date.now().toString().slice(-6),
+                        ...JSON.parse(JSON.stringify(form.value)),
+                        createdAt: new Date().toISOString()
+                    };
+
+                    orders.value.unshift(newOrder);
+                    saveOrdersToStorage();
+
+                    // 自動學習記錄新客戶及商品
+                    if (!customerHistory.value[form.value.customerName]) {
+                        customerHistory.value[form.value.customerName] = [];
+                    }
+                    form.value.items.forEach(item => {
+                        const exists = customerHistory.value[form.value.customerName].find(p => p.productName === item.productName);
+                        if (!exists) {
+                            customerHistory.value[form.value.customerName].push({
+                                productName: item.productName,
+                                unit: item.unit,
+                                price: item.price
+                            });
+                        }
+                    });
+                    saveCustomerHistory();
+
+                    showToast('訂單儲存成功！');
+                    resetForm();
+                    activeTab.value = 'orderList';
+                };
+
+                const editOrder = (order) => {
+                    editingOrderId.value = order.id;
+                    form.value = JSON.parse(JSON.stringify(order));
+                    activeTab.value = 'newOrder';
+                    showToast(`正在編輯訂單 ${order.id}`);
+                };
+
+                const deleteOrder = (id) => {
+                    if (editingOrderId.value === id) {
+                        editingOrderId.value = null;
+                    }
+                    orders.value = orders.value.filter(o => o.id !== id);
+                    saveOrdersToStorage();
+                    showToast('已刪除該筆訂單');
+                };
+
+                const calculateOrderTotal = (order) => {
+                    return order.items.reduce((sum, item) => sum + ((item.quantity || 0) * (item.price || 0)), 0);
+                };
+
+                // --- Filtering ---
+                const filter = ref({ search: '', salesperson: '', type: '' });
+
+                const filteredOrders = computed(() => {
+                    return orders.value.filter(o => {
+                        const matchSearch = !filter.value.search || 
+                                           o.customerName.includes(filter.value.search) || 
+                                           o.items.some(i => i.productName.includes(filter.value.search));
+                        const matchPerson = !filter.value.salesperson || o.salesperson === filter.value.salesperson;
+                        const matchType = !filter.value.type || o.customerType === filter.value.type;
+                        return matchSearch && matchPerson && matchType;
+                    });
+                });
+
+                const filteredTotalAmount = computed(() => {
+                    return filteredOrders.value.reduce((sum, order) => sum + calculateOrderTotal(order), 0);
+                });
+
+                const countByType = (type) => {
+                    return orders.value.filter(o => o.customerType === type).length;
+                };
+
+                // --- Excel Exporting (檔名規範: 訂單彙整_下單日期_下單人_XXX.xlsx) ---
+                const generateExcelWorkbook = (ordersArray) => {
+                    const exportRows = [];
+                    ordersArray.forEach(order => {
+                        order.items.forEach((item, index) => {
+                            exportRows.push({
+                                '下單日期': order.orderDate,
+                                '到貨日期': order.deliveryDate || '',
+                                '下單人員': order.salesperson,
+                                '客戶類型': order.customerType,
+                                '客戶名稱': order.customerName,
+                                '產地價(元)': order.farmPrice || '',
+                                '項次': index + 1,
+                                '品名': item.productName,
+                                '數量': item.quantity,
+                                '單位': item.unit,
+                                '報價單價(元)': item.price,
+                                '小計(元)': item.quantity * item.price,
+                                '備註': index === 0 ? (order.remarks || '') : ''
+                            });
+                        });
+                    });
+
+                    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+                    const workbook = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(workbook, worksheet, '訂單彙整');
+                    return workbook;
+                };
+
+                const exportCurrentOrderToExcel = () => {
+                    if (!form.value.salesperson) {
+                        showToast('請選擇下單人員', 'error');
+                        return;
+                    }
+                    const tempOrder = { ...form.value, id: 'TEMP' };
+                    const wb = generateExcelWorkbook([tempOrder]);
+                    const seq = formatSequence(orders.value.length + 1);
+                    const filename = `訂單彙整_${form.value.orderDate}_${form.value.salesperson}_${seq}.xlsx`;
+                    XLSX.writeFile(wb, filename);
+                    showToast(`匯出成功：${filename}`);
+                };
+
+                const exportSingleOrderExcel = (order) => {
+                    const wb = generateExcelWorkbook([order]);
+                    const orderIndex = orders.value.findIndex(o => o.id === order.id);
+                    const seq = formatSequence(orderIndex !== -1 ? orders.value.length - orderIndex : 1);
+                    const filename = `訂單彙整_${order.orderDate}_${order.salesperson}_${seq}.xlsx`;
+                    XLSX.writeFile(wb, filename);
+                    showToast(`匯出成功：${filename}`);
+                };
+
+                const exportBatchExcel = () => {
+                    if (filteredOrders.value.length === 0) {
+                        showToast('無訂單可供匯出', 'error');
+                        return;
+                    }
+                    const wb = generateExcelWorkbook(filteredOrders.value);
+                    const firstOrder = filteredOrders.value[0];
+                    const seq = formatSequence(1);
+                    const filename = `訂單彙整_${firstOrder.orderDate}_${firstOrder.salesperson}_${seq}.xlsx`;
+                    XLSX.writeFile(wb, filename);
+                    showToast(`已匯出 ${filteredOrders.value.length} 筆訂單至：${filename}`);
+                };
+
+                // --- LINE Text Generator ---
+                const buildLineString = (order) => {
+                    let str = `【茂生食品 訂單】\n`;
+                    str += `下單日期：${order.orderDate}\n`;
+                    str += `到貨日期：${order.deliveryDate}\n`;
+                    str += `下單人員：${order.salesperson}\n`;
+                    str += `客戶名稱：${order.customerName} (${order.customerType})\n`;
+                    if (order.farmPrice) str += `產地價：$${order.farmPrice}/斤\n`;
+                    str += `------------------\n`;
+                    order.items.forEach((item, i) => {
+                        str += `${i+1}. ${item.productName} * ${item.quantity} ${item.unit} (單價:$${item.price}) = $${item.quantity * item.price}\n`;
+                    });
+                    str += `------------------\n`;
+                    str += `總金額：$${calculateOrderTotal(order).toLocaleString()} 元\n`;
+                    if (order.remarks) str += `備註：${order.remarks}\n`;
+                    return str;
+                };
+
+                const copyToClipboard = (text) => {
+                    const textArea = document.createElement('textarea');
+                    textArea.value = text;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                        showToast('已複製到剪貼簿！可直接貼上 LINE');
+                    } catch (err) {
+                        showToast('複製失敗，請手動複製', 'error');
+                    }
+                    document.body.removeChild(textArea);
+                };
+
+                const copyFormLineText = () => {
+                    if (!form.value.customerName) {
+                        showToast('請先輸入客戶名稱', 'error');
+                        return;
+                    }
+                    const txt = buildLineString(form.value);
+                    copyToClipboard(txt);
+                };
+
+                const copyOrderLineText = (order) => {
+                    const txt = buildLineString(order);
+                    copyToClipboard(txt);
+                };
+
+                // --- Initialization ---
+                onMounted(() => {
+                    loadSalespersons();
+                    loadCustomerHistory();
+                    loadOrders();
+                    if (salespersons.value.length > 0) {
+                        form.value.salesperson = salespersons.value[0];
+                    }
+                });
+
+                return {
+                    activeTab,
+                    editingOrderId,
+                    toast,
+                    showCustomerNoticeModal,
+                    salespersons,
+                    newSalespersonName,
+                    addSalesperson,
+                    removeSalesperson,
+                    customerHistory,
+                    clearCustomerHistory,
+                    handleExcelUpload,
+                    hasCustomerHistory,
+                    clearCustomerName,
+                    form,
+                    totalAmount,
+                    recalculateEggPrices,
+                    onItemNameChange,
+                    onItemUnitChange,
+                    onCustomerInput,
+                    onCustomerFocus,
+                    applyCustomerHistory,
+                    addItem,
+                    removeItem,
+                    resetForm,
+                    cancelEdit,
+                    orders,
+                    saveOrder,
+                    editOrder,
+                    deleteOrder,
+                    calculateOrderTotal,
+                    filter,
+                    filteredOrders,
+                    filteredTotalAmount,
+                    countByType,
+                    exportCurrentOrderToExcel,
+                    exportSingleOrderExcel,
+                    exportBatchExcel,
+                    copyFormLineText,
+                    copyOrderLineText
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
